@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fun Bible Word Game</title>
+  <meta name="description" content="A daily Bible-themed Wordle-like. Solve the 5-letter word to reveal an uplifting Bible verse." />
+  <meta name="theme-color" content="#0b0f14" />
+
+  <!-- Security headers (inline-friendly CSP) -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 img-src 'self' data:;
+                 media-src 'self' data:;
+                 font-src 'self' data:;
+                 object-src 'none';
+                 base-uri 'none';
+                 frame-ancestors 'none';
+                 connect-src 'self';
+                 form-action 'self' https:;
+                 upgrade-insecure-requests;
+                 script-src 'self' 'unsafe-inline';
+                 style-src 'self' 'unsafe-inline';">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=(), payment=(), usb=()">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+  <link rel="icon" href="favicon.ico" />
+  <link rel="icon" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="icon" sizes="512x512" href="icons/icon-512.png" />
+
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <style>
+    :root{
+      --bg:#0b0f14; --panel:#0f141a; --text:#e7edf4; --muted:#94a3b8; --accent:#7cc6ff;
+      --tile:#1b2430; --tile-border:#2a3442; --gap:10px; --radius:12px;
+      --correct:#2aaa4b; --present:#cc9a06; --absent:#37424f;
+      --kbd-bg:#1a222c; --kbd-key:#202a36; --kbd-border:#2b3645;
+      /* toolbar sizing */
+      --toolbar-btn-size: 44px;
+      --icon-size: 22px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:500 16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+    .wrap{max-width:680px;margin:0 auto;padding:20px}
+    header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:10px}
+    .title{font-weight:800;font-size:1.6rem;letter-spacing:.5px}
+    .sub{font-size:.9rem;color:var(--muted)}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;margin:10px 0}
+    .chip{background:var(--panel);border:1px solid var(--tile-border);color:var(--text);padding:8px 12px;border-radius:999px;cursor:pointer;user-select:none}
+    .chip[aria-pressed="true"]{outline:2px solid var(--accent)}
+    .modes{display:flex;gap:8px;justify-content:center;margin:12px 0}
+    .mode{background:var(--panel);border:1px solid var(--tile-border);padding:8px 14px;border-radius:10px;cursor:pointer}
+    .mode.active{outline:2px solid var(--accent)}
+    .mode small{display:block;color:var(--muted);font-size:.75rem}
+    .board{display:grid;grid-template-rows:repeat(6,1fr);gap:var(--gap);max-width:340px;margin:14px auto 8px}
+    .row{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--gap)}
+    .tile{height:56px;background:var(--tile);border:2px solid var(--tile-border);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.4rem;text-transform:uppercase}
+    .tile.revealed{transition:transform .36s ease, background-color .36s ease, border-color .36s ease}
+    .tile.correct{background:var(--correct);border-color:var(--correct)}
+    .tile.present{background:var(--present);border-color:var(--present)}
+    .tile.absent{background:var(--absent);border-color:var(--absent)}
+    body.cb .tile.correct{box-shadow: inset 0 0 0 3px #0e5e27}
+    body.cb .tile.present{box-shadow: inset 0 0 0 3px #7a5a00}
+    body.cb .tile.absent{box-shadow: inset 0 0 0 3px #111}
+    .kb{max-width:680px;margin:10px auto 0;display:grid;gap:10px}
+    .kbrow{display:grid;grid-auto-flow:column;gap:8px}
+    .key{background:var(--kbd-key);border:1px solid var(--kbd-border);border-radius:10px;height:48px;display:flex;align-items:center;justify-content:center;font-weight:700;cursor:pointer;user-select:none}
+    .key.wide{grid-column:span 2}
+    .key.correct{background:var(--correct);border-color:var(--correct)}
+    .key.present{background:var(--present);border-color:var(--present)}
+    .key.absent{background:var(--absent);border-color:var(--absent)}
+    .status{background:var(--panel);border:1px solid var(--tile-border);border-radius:12px;padding:10px 12px;margin:12px auto 8px;max-width:680px;color:var(--text)}
+    /* FIX: support both .status.muted and descendants */
+    .status.muted, .status .muted{color:var(--muted)}
+    .verse{background:var(--panel);border:1px solid var(--tile-border);border-radius:12px;padding:14px;margin:10px auto 16px;max-width:680px;display:none}
+    .verse.visible{display:block}
+    .actions{display:flex;gap:10px;justify-content:center;margin:14px 0}
+    button.btn{background:var(--panel);color:var(--text);border:1px solid var(--tile-border);border-radius:12px;padding:10px 14px;cursor:pointer}
+    .confetti{position:fixed;left:0;top:0;width:100%;height:0;pointer-events:none;overflow:visible}
+    .confetti span{position:absolute;top:-10vh;font-size:22px;will-change:transform,opacity}
+    @keyframes fall{to{transform:translateY(110vh) rotate(360deg);opacity:0.9}}
+    .key.victory{box-shadow:0 0 12px rgba(42,170,75,.85), inset 0 0 0 1px rgba(255,255,255,.08);transition:box-shadow .25s ease}
+    .tile.sparkle{position:relative;overflow:hidden}
+    .tile.sparkle::after{content:"";position:absolute;top:0;left:-150%;width:150%;height:100%;background:linear-gradient(120deg,transparent 20%,rgba(255,255,255,.35) 40%,transparent 60%);animation:shine .8s ease forwards}
+    @keyframes shine{to{left:130%}}
+    .verse.highlight{animation:versePulse .9s ease}
+    @keyframes versePulse{0%{box-shadow:0 0 0 rgba(124,198,255,0)}50%{box-shadow:0 0 0 4px rgba(124,198,255,.25)}100%{box-shadow:0 0 0 rgba(124,198,255,0)}}
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:72px;z-index:1001;background:var(--panel);color:var(--text);border:1px solid var(--tile-border);border-radius:12px;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
+    .install-nudge{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:1000;display:none;align-items:center;gap:10px;max-width:680px;width:calc(100% - 24px);background:var(--panel);color:var(--text);border:1px solid var(--tile-border);border-radius:9999px;padding:8px 10px;box-shadow:0 10px 24px rgba(0,0,0,.35)}
+    .install-nudge.show{display:flex}
+    .install-nudge .txt{font-size:.9rem}
+    .install-nudge .sp{flex:1}
+    .install-nudge .cta{background:var(--accent);color:#04121a;border:none;border-radius:9999px;padding:8px 12px;font-weight:800;cursor:pointer}
+    .install-nudge .close{background:transparent;color:var(--muted);border:none;border-radius:10px;padding:6px 8px;cursor:pointer}
+    @media (prefers-reduced-motion: reduce){
+      .tile.revealed{transition:none}
+      .confetti span{animation:none}
+      .key.victory{box-shadow:none!important}
+      .tile.sparkle::after{display:none;animation:none}
+      .verse.highlight{animation:none}
+      .toast{transition:none}
+    }
+
+    /* (legacy) mode small labels; visually hidden by .sr-only now */
+    .toolbar .mode small { font-size:.85em; font-weight:600; line-height:1.1; display:block; margin-top:2px; }
+
+    /* === Toolbar icon UI === */
+    .toolbar .icon-btn{
+      width:var(--toolbar-btn-size); height:var(--toolbar-btn-size);
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:0; border-radius:10px; box-sizing:border-box;
+      position:relative; transition:transform .12s ease; color:var(--text);
+    }
+    .toolbar .icon{ width:var(--icon-size); height:var(--icon-size); display:block; }
+
+    .toolbar .icon-btn::before{
+      content:""; position:absolute; left:50%; top:50%;
+      width:28px; height:28px; transform:translate(-50%,-50%);
+      border-radius:999px;
+      background:radial-gradient(60% 60% at 30% 30%,
+                 var(--icon-grad-start,#7cc6ff) 0%,
+                 var(--icon-grad-end,#4ade80) 90%);
+      opacity:.28; filter:saturate(1);
+      transition:opacity .2s ease, transform .2s ease, filter .2s ease;
+      pointer-events:none;
+    }
+    .toolbar .icon-btn:hover::before,
+    .toolbar .icon-btn:focus-visible::before{ opacity:.45; transform:translate(-50%,-50%) scale(1.06); filter:saturate(1.05) }
+    .toolbar .mode.active::before,
+    .toolbar .mode[aria-selected="true"]::before,
+    .toolbar .icon-btn[aria-pressed="true"]::before{ opacity:.55 }
+
+    @media (prefers-reduced-motion: reduce){
+      .toolbar .icon-btn, .toolbar .icon-btn::before { transition: none; }
+    }
+
+    /* Per-button palettes */
+    #toggle-cb   { --icon-grad-start:#4fd1c5; --icon-grad-end:#22d3ee; }
+    #toggle-sound{ --icon-grad-start:#a78bfa; --icon-grad-end:#6366f1; }
+    #mode-daily  { --icon-grad-start:#60a5fa; --icon-grad-end:#34d399; }
+    #mode-b1     { --icon-grad-start:#f472b6; --icon-grad-end:#f59e0b; }
+    #mode-b2     { --icon-grad-start:#f59e0b; --icon-grad-end:#fbbf24; }
+
+    .toolbar .mode.active .icon,
+    .toolbar .mode[aria-selected="true"] .icon{ color:#fff; }
+
+    /* Screen-reader only utility */
+    .sr-only{
+      position:absolute!important; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+    }
+    .toolbar .mode br{ display:none; }
+    .toolbar .icon-btn:focus-visible{ outline:2px solid currentColor; outline-offset:2px; }
+
+    /* Donate green + actions white */
+    #btn-donate{
+      background:var(--correct); border-color:var(--correct); color:#04121a; font-weight:800;
+      transition:transform .08s ease, filter .15s ease, box-shadow .2s ease;
+    }
+    #btn-donate:hover{ filter:brightness(1.08); }
+    #btn-donate:active{ transform:translateY(1px); }
+    #btn-donate:focus-visible{ outline:2px solid rgba(255,255,255,.18); box-shadow:0 0 0 3px rgba(42,170,75,.35); }
+
+    #btn-share, #btn-share-verse, #btn-help{
+      background:#fff; border-color:#e2e8f0; color:#04121a; font-weight:700;
+      box-shadow:0 1px 0 rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.10);
+      transition:transform .08s ease, filter .15s ease, box-shadow .2s ease;
+    }
+    #btn-share:hover, #btn-share-verse:hover, #btn-help:hover{
+      filter:brightness(1.03);
+      box-shadow:0 1px 0 rgba(0,0,0,.05), 0 8px 20px rgba(0,0,0,.14);
+    }
+    #btn-share:active, #btn-share-verse:active, #btn-help:active{ transform:translateY(1px); }
+    #btn-share:focus-visible, #btn-share-verse:focus-visible, #btn-help:focus-visible{
+      outline:2px solid rgba(4,18,26,.25); box-shadow:0 0 0 3px rgba(124,198,255,.35);
+    }
+
+    /* ===== Donate Kill Switch (off by default as requested) =====
+       Turn the Donate button off without touching HTML/JS. Remove this line
+       or override to bring it back later. */
+    #btn-donate{ display:none !important; }
+    /* To re-enable later:
+    #btn-donate{ display:inline-block !important; }
+    */
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">Fun Bible Game</div>
+      <div class="sub">Solve the 5-letter word to reveal an uplifting Bible verse.</div>
+
+      <div class="toolbar" role="toolbar" aria-label="Accessibility and settings">
+        <!-- Color-blind toggle -->
+        <button class="chip icon-btn" id="toggle-cb" aria-pressed="false"
+                title="Toggle color-blind mode" aria-label="Toggle color-blind mode">
+          <svg class="icon" aria-hidden="true"><use href="#ic-palette" xlink:href="#ic-palette"/></svg>
+          <span class="sr-only">Color-blind</span>
+        </button>
+
+        <!-- Sound toggle -->
+        <button class="chip icon-btn" id="toggle-sound" aria-pressed="false"
+                title="Toggle sound effects" aria-label="Toggle sound effects">
+          <svg class="icon" aria-hidden="true"><use href="#ic-volume-on" xlink:href="#ic-volume-on"/></svg>
+          <span class="sr-only">Sound</span>
+        </button>
+
+        <div class="modes" role="tablist" aria-label="Puzzle mode">
+          <!-- Daily -->
+          <button class="mode icon-btn active" role="tab" aria-selected="true" id="mode-daily"
+                  title="Daily puzzle" aria-label="Daily puzzle">
+            <svg class="icon" aria-hidden="true"><use href="#ic-calendar" xlink:href="#ic-calendar"/></svg>
+            <span class="sr-only">Daily</span>
+            <small id="daily-status" class="sr-only">unsolved</small>
+          </button>
+
+          <!-- Bonus 1 -->
+          <button class="mode icon-btn" role="tab" aria-selected="false" id="mode-b1"
+                  title="Bonus 1" aria-label="Bonus 1">
+            <svg class="icon" aria-hidden="true"><use href="#ic-gift" xlink:href="#ic-gift"/></svg>
+            <span class="sr-only">Bonus 1</span>
+            <small id="b1-status" class="sr-only">available</small>
+          </button>
+
+          <!-- Bonus 2 -->
+          <button class="mode icon-btn" role="tab" aria-selected="false" id="mode-b2"
+                  title="Bonus 2" aria-label="Bonus 2">
+            <svg class="icon" aria-hidden="true"><use href="#ic-star" xlink:href="#ic-star"/></svg>
+            <span class="sr-only">Bonus 2</span>
+            <small id="b2-status" class="sr-only">available</small>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="board" id="board" aria-label="Guess board"></section>
+      <section class="kb" id="kb" aria-label="On-screen keyboard"></section>
+      <div class="status" id="status">Welcome! Type or tap letters, then press <b>Enter</b>. You have 6 tries.</div>
+      <div class="status muted" id="timer">Next Daily Puzzle: —</div>
+      <article class="verse" id="verse" aria-live="polite"></article>
+
+      <div class="actions">
+        <button class="btn" id="btn-share">Share</button>
+        <button class="btn" id="btn-share-verse">Share + Verse</button>
+        <button class="btn" id="btn-help">Help</button>
+        <button class="btn" id="btn-donate">Donate</button>
+      </div>
+    </main>
+  </div>
+
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <div id="install-nudge" class="install-nudge" role="dialog" aria-live="polite" aria-label="Install app prompt">
+    <span class="txt" id="install-nudge-text">Install Fun Bible Game for quick daily play?</span>
+    <span class="sp"></span>
+    <button id="btn-install" class="cta">Install</button>
+    <button id="btn-ios" class="cta" style="display:none">How</button>
+    <button id="btn-close-nudge" class="close" aria-label="Dismiss">✕</button>
+  </div>
+
+  <audio id="sfx-win" preload="auto"></audio>
+
+  <!-- Main game script -->
+  <script>
+  (function(){
+    "use strict";
+
+    /* Configure your donation URL here */
+    const DONATE_URL = ""; // e.g., "https://ko-fi.com/yourhandle" or "https://buymeacoffee.com/yourname"
+
+    const CONFIG = {
+      rows:6, cols:5,
+      epochUTC: Date.UTC(2025,0,1),
+      storagePrefix:'fbw-v1',
+      emojis:{correct:'🟩',present:'🟨',absent:'⬛'},
+      confettiEmojis:['🎉','✨','🎊','🕊️','🌟']
+    };
+
+    const ANSWERS=[
+      {w:'LIGHT', ref:'Genesis 1:3', verse:'And God said, Let there be light: and there was light.'},
+      {w:'FAITH', ref:'Hebrews 11:1', verse:'Now faith is the substance of things hoped for, the evidence of things not seen.'},
+      {w:'GRACE', ref:'Ephesians 2:8', verse:'For by grace are ye saved through faith; and that not of yourselves: it is the gift of God.'},
+      {w:'P.EACE'.replace('.',''), ref:'John 14:27', verse:'Peace I leave with you, my peace I give unto you... Let not your heart be troubled, neither let it be afraid.'},
+      {w:'MERCY', ref:'Psalm 136:1', verse:'O give thanks unto the LORD; for he is good: for his mercy endureth for ever.'},
+      {w:'TRUST', ref:'Proverbs 3:5', verse:'Trust in the LORD with all thine heart; and lean not unto thine own understanding.'}
+    ];
+
+    const LETTER_ROWS="QWERTYUIOP|ASDFGHJKL|ZXCVBNM".split('|').map(r=>r.split(''));
+    const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
+    const utcDateStr=(d=new Date())=>new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())).toISOString().slice(0,10);
+    const daysSinceEpoch=()=>{const n=new Date();const t=Date.UTC(n.getUTCFullYear(),n.getUTCMonth(),n.getUTCDate());return Math.floor((t-CONFIG.epochUTC)/86400000)};
+    const msToHMS=ms=>{const s=Math.max(0,Math.floor(ms/1000));const h=String(Math.floor(s/3600)).padStart(2,'0');const m=String(Math.floor((s%3600)/60)).padStart(2,'0');const ss=String(s%60).padStart(2,'0');return `${h}h ${m}m ${ss}s`};
+    const idFor=m=>`${CONFIG.storagePrefix}-${utcDateStr()}-${m}`;
+
+    let currentMode='daily', answer='', ref='', verseText='', guesses=[], states=[], cur='', gameOver=false, muted=false;
+    let board,kb,statusEl,verseEl,timerEl,toastEl,sfxWin;
+
+    document.addEventListener('DOMContentLoaded',init);
+
+    function init(){
+      board=$('#board');kb=$('#kb');statusEl=$('#status');verseEl=$('#verse');timerEl=$('#timer');toastEl=$('#toast');sfxWin=$('#sfx-win');
+
+      const set=loadSettings();
+      if(set.cb){
+        document.body.classList.add('cb');
+        $('#toggle-cb').setAttribute('aria-pressed','true');
+      }
+      if(set.muted){
+        muted=true;
+        $('#toggle-sound').setAttribute('aria-pressed','true'); // true means MUTED
+      }
+
+      buildBoard();
+      buildKeyboard();
+      attachEvents();
+      switchMode('daily');
+      tickTimer(); setInterval(tickTimer,1000);
+      updateModeBadges();
+
+      if('serviceWorker' in navigator){
+        window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});
+      }
+      installNudgeSetup();
+
+      // Initialize sound icon to reflect current aria-pressed state (muted vs on)
+      syncSoundIcon();
+    }
+
+    function buildBoard(){
+      board.innerHTML='';
+      for(let r=0;r<CONFIG.rows;r++){
+        const row=document.createElement('div');row.className='row';
+        for(let c=0;c<CONFIG.cols;c++){
+          const t=document.createElement('div');t.className='tile';t.setAttribute('role','gridcell');row.appendChild(t);
+        }
+        board.appendChild(row);
+      }
+    }
+
+    function buildKeyboard(){
+      kb.innerHTML='';
+      LETTER_ROWS.forEach((row,idx)=>{
+        const r=document.createElement('div');r.className='kbrow';
+        if(idx===2)r.appendChild(keyBtn('Enter','Enter',true));
+        row.forEach(ch=>r.appendChild(keyBtn(ch,ch)));
+        if(idx===2)r.appendChild(keyBtn('Del','Backspace',true));
+        kb.appendChild(r);
+      });
+    }
+    function keyBtn(label,value,wide=false){
+      const b=document.createElement('div');
+      b.className='key'+(wide?' wide':'');
+      b.textContent=label;
+      b.setAttribute('data-key',value);
+      b.setAttribute('role','button');
+      b.addEventListener('click',()=>handleKey(value));
+      return b;
+    }
+
+    const DAILY={mode:'daily',index:((daysSinceEpoch()%ANSWERS.length)+ANSWERS.length)%ANSWERS.length};
+    function seededPick(seed,excludeIdx=new Set()){
+      let x=0;for(let i=0;i<seed.length;i++)x=(x*1664525+seed.charCodeAt(i)+1013904223)>>>0;
+      for(let t=0;t<ANSWERS.length+5;t++){
+        x=(1103515245*x+12345)&0x7fffffff;
+        const idx=x%ANSWERS.length;
+        if(!excludeIdx.has(idx))return idx;
+      }
+      return 0;
+    }
+    const B1={mode:'b1',index:seededPick(utcDateStr()+"-b1",new Set([DAILY.index]))};
+    const B2={mode:'b2',index:seededPick(utcDateStr()+"-b2",new Set([DAILY.index,B1.index]))};
+    const MODES={daily:DAILY,b1:B1,b2:B2};
+
+    function loadSettings(){try{return JSON.parse(localStorage.getItem(`${CONFIG.storagePrefix}-settings`)||'{}')}catch{return {}}}
+    function saveSettings(s){try{localStorage.setItem(`${CONFIG.storagePrefix}-settings`,JSON.stringify(s))}catch{}}
+    function loadState(mode){try{return JSON.parse(localStorage.getItem(idFor(mode))||'null')}catch{return null}}
+    function saveState(mode,state){try{localStorage.setItem(idFor(mode),JSON.stringify(state))}catch{}}
+
+    function switchMode(mode){
+      currentMode=mode;
+      // visual class
+      $$('.mode').forEach(m=>m.classList.remove('active'));
+      const currentBtn = $('#mode-'+(mode==='daily'?'daily':mode));
+      if (currentBtn) currentBtn.classList.add('active');
+      // ARIA state for tabs
+      $$('.mode').forEach(m=>m.setAttribute('aria-selected','false'));
+      if (currentBtn) currentBtn.setAttribute('aria-selected','true');
+
+      const def=MODES[mode]; const info=ANSWERS[def.index];
+      answer=info.w; ref=info.ref; verseText=info.verse;
+
+      const snap=loadState(mode)||{guesses:[],states:[],over:false};
+      guesses=snap.guesses; states=snap.states; gameOver=!!snap.over; cur='';
+
+      renderAll();
+      gameOver?revealVerse():hideVerse();
+      statusMsg(`You are playing: ${modeLabel(mode)}. ${CONFIG.rows} tries to guess the 5-letter word.`);
+    }
+    function modeLabel(m){return m==='daily'?'Daily':(m==='b1'?'Bonus 1':'Bonus 2')}
+    function updateModeBadges(){
+      const dSolved=loadState('daily')?.over?'solved':'unsolved';
+      const st=getStreak().count||0;
+      $('#daily-status').textContent=dSolved+(st>0?` • 🔥${st}`:'');
+      $('#b1-status').textContent=loadState('b1')?.over?'solved':'available';
+      $('#b2-status').textContent=loadState('b2')?.over?'solved':'available';
+    }
+
+    function renderAll(){
+      const rows=$$('#board .row');
+      rows.forEach((rowEl,rIdx)=>{
+        const word=guesses[rIdx]||(rIdx===guesses.length?cur:'');
+        const rowStates=states[rIdx]||[];
+        const tiles=Array.from(rowEl.children);
+        for(let c=0;c<CONFIG.cols;c++){
+          const t=tiles[c];
+          const ch=word?.[c]||'';
+          t.textContent=ch;
+          t.className='tile'+(rowStates[c]?` revealed ${rowStates[c]}`:'');
+        }
+      });
+
+      const precedence={absent:1,present:2,correct:3};const kstates={};
+      states.forEach((row,rIdx)=>{
+        const word=guesses[rIdx]||'';
+        row.forEach((st,i)=>{
+          const letter=word[i]; if(!letter)return;
+          const prev=kstates[letter]; if(!prev||precedence[st]>precedence[prev])kstates[letter]=st;
+        });
+      });
+      $$('.key').forEach(k=>{
+        const ch=k.getAttribute('data-key'); if(ch.length>1)return;
+        k.classList.remove('correct','present','absent');
+        if(kstates[ch])k.classList.add(kstates[ch]);
+      });
+    }
+    function statusMsg(msg){statusEl.innerHTML=msg}
+
+    function attachEvents(){
+      document.addEventListener('keydown',e=>{
+        if(e.ctrlKey||e.metaKey||e.altKey)return;
+        const key=e.key==='Backspace'?'Backspace':e.key==='Enter'?'Enter':e.key.toUpperCase();
+        if(key.length===1&&key>='A'&&key<='Z')handleKey(key);
+        else if(key==='Backspace')handleKey('Backspace');
+        else if(key==='Enter')handleKey('Enter');
+      });
+
+      $('#toggle-cb').addEventListener('click',()=>{
+        const now=!document.body.classList.contains('cb');
+        document.body.classList.toggle('cb');
+        $('#toggle-cb').setAttribute('aria-pressed',String(now));
+        const s=loadSettings(); s.cb=now; saveSettings(s);
+      });
+
+      $('#toggle-sound').addEventListener('click',()=>{
+        muted=!muted;
+        $('#toggle-sound').setAttribute('aria-pressed',String(muted)); // true means MUTED
+        const s=loadSettings(); s.muted=muted; saveSettings(s);
+        syncSoundIcon();
+      });
+
+      $('#mode-daily').addEventListener('click',()=>switchMode('daily'));
+      $('#mode-b1').addEventListener('click',()=>switchMode('b1'));
+      $('#mode-b2').addEventListener('click',()=>switchMode('b2'));
+
+      const helpBtn = $('#btn-help');
+      if (helpBtn) helpBtn.addEventListener('click',()=>{alert('Guess the 5-letter word in up to 6 tries.\nColors: Green=correct spot, Yellow=letter present, Gray=not in word.\nDaily puzzle is the same for all players; Bonus 1 & 2 are per-player extras.\nSolve to reveal an uplifting KJV verse!')});
+
+      $('#btn-share').addEventListener('click',()=>share(false));
+      $('#btn-share-verse').addEventListener('click',()=>share(true));
+
+      const donateBtn = $('#btn-donate');
+      if (donateBtn) donateBtn.addEventListener('click', ()=>{
+        if (DONATE_URL && /^https?:\/\//i.test(DONATE_URL)) {
+          try { window.open(DONATE_URL, '_blank', 'noopener'); } catch {}
+        } else {
+          showToast('Donation link not set.', 1500);
+        }
+      });
+    }
+
+    function handleKey(key){
+      if(gameOver)return;
+      if(key==='Enter')return submit();
+      if(key==='Backspace'){cur=cur.slice(0,-1);renderAll();return}
+      if(cur.length>=CONFIG.cols)return;
+      if(key.length===1&&key>='A'&&key<='Z'){cur+=key;renderAll()}
+    }
+
+    function scoreGuess(guess,ans){
+      const res=Array(CONFIG.cols).fill('absent'); const used=Array(CONFIG.cols).fill(false);
+      for(let i=0;i<CONFIG.cols;i++){ if(guess[i]===ans[i]){ res[i]='correct'; used[i]=true; } }
+      for(let i=0;i<CONFIG.cols;i++){
+        if(res[i]==='correct') continue;
+        const ch=guess[i];
+        for(let j=0;j<CONFIG.cols;j++){
+          if(!used[j] && ans[j]===ch){ used[j]=true; res[i]='present'; break; }
+        }
+      }
+      return res;
+    }
+
+    function submit(){
+      if(cur.length!==CONFIG.cols){statusMsg('Not enough letters.');return}
+      const guess=cur.toUpperCase(); const res=scoreGuess(guess,answer);
+      guesses.push(guess); states.push(res); cur=''; renderAll();
+      const won=res.every(s=>s==='correct'); const lost=!won && guesses.length>=CONFIG.rows;
+
+      if(won){
+        gameOver=true; persist(); statusMsg(`Solved! “${answer}” — <b>${ref}</b>`); revealVerse(); verseHighlight();
+        const attempts=guesses.length; const tierA=attempts<=3; const isDaily=(currentMode==='daily');
+        if(!prefersReduced()){ celebrate(tierA?100:35); keyboardRipple(tierA?800:600); tileSparkle(guesses.length-1,tierA?900:600); }
+        if(!muted) try{ sfxWin.currentTime=0; sfxWin.play().catch(()=>{}); }catch{}
+        if(isDaily){ const st=updateStreakOnDailyWin(); showToast(tierA?`🔥 Day ${st}! Keep shining.`:`Nice work—Day ${st} continues!`, 2000); } else { showToast('Bonus cleared—well done!', 1500); }
+        updateModeBadges();
+      } else if(lost){
+        gameOver=true; persist(); statusMsg(`Out of tries. The word was “${answer}”.`); revealVerse();
+      } else {
+        persist(); statusMsg(`${CONFIG.rows-guesses.length} tries left.`);
+      }
+    }
+
+    function persist(){ saveState(currentMode,{guesses,states,over:gameOver}) }
+    function revealVerse(){ verseEl.classList.add('visible'); verseEl.innerHTML=`<b>${ref}</b> — ${verseText}` }
+    function hideVerse(){ verseEl.classList.remove('visible'); verseEl.innerHTML='' }
+
+    const prefersReduced=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function keyboardRipple(totalDuration=700){
+      if(prefersReduced())return;
+      const keys=$$('.key'); keys.forEach((k,i)=>{ setTimeout(()=>k.classList.add('victory'),i*15) });
+      setTimeout(()=>keys.forEach(k=>k.classList.remove('victory')), totalDuration+400);
+    }
+    function tileSparkle(rowIdx,duration=800){
+      if(prefersReduced())return;
+      const rowEl=$$('#board .row')[rowIdx]; if(!rowEl)return;
+      const tiles=rowEl.querySelectorAll('.tile');
+      tiles.forEach(t=>t.classList.add('sparkle'));
+      setTimeout(()=>tiles.forEach(t=>t.classList.remove('sparkle')),duration);
+    }
+    function verseHighlight(){
+      if(prefersReduced())return;
+      verseEl.classList.add('highlight'); setTimeout(()=>verseEl.classList.remove('highlight'),900);
+    }
+    function showToast(text,ms=1800){
+      const el=$('#toast'); el.textContent=text; el.classList.add('show');
+      setTimeout(()=>el.classList.remove('show'),ms);
+    }
+
+    function ymdUTCOffset(days){
+      const d=new Date(); const u=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+days));
+      return u.toISOString().slice(0,10);
+    }
+    function getStreak(){
+      const c=parseInt(localStorage.getItem(`${CONFIG.storagePrefix}-streak`)||'0',10);
+      const last=localStorage.getItem(`${CONFIG.storagePrefix}-lastSolved`)||'';
+      return {count:isNaN(c)?0:c,last};
+    }
+    function setStreak(count,last){
+      try{ localStorage.setItem(`${CONFIG.storagePrefix}-streak`,String(count));
+           localStorage.setItem(`${CONFIG.storagePrefix}-lastSolved`,last) }catch{}
+    }
+    function updateStreakOnDailyWin(){
+      const today=utcDateStr();
+      const {count,last}=getStreak();
+      if(last===today) return count;
+      const yesterday=ymdUTCOffset(-1);
+      const next=(last===yesterday)?(count+1):1;
+      setStreak(next,today); return next;
+    }
+
+    function celebrate(count=80){
+      if(prefersReduced())return;
+      const root=$('#confetti'); root.innerHTML='';
+      for(let i=0;i<count;i++){
+        const s=document.createElement('span');
+        s.textContent=CONFIG.confettiEmojis[i%CONFIG.confettiEmojis.length];
+        s.style.left=(Math.random()*100)+'%';
+        const dur=2.2+Math.random()*1.6;
+        s.style.animation=`fall ${dur}s linear ${Math.random()}s forwards`;
+        s.style.transform=`translateY(0) rotate(${Math.random()*360}deg)`;
+        root.appendChild(s);
+      }
+      setTimeout(()=>{root.innerHTML=''},4200);
+    }
+
+    function tickTimer(){
+      const now=new Date();
+      const nextUTC=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate()+1));
+      const ms=nextUTC-now;
+      timerEl.textContent=`Next daily puzzle in ${msToHMS(ms)}`;
+    }
+
+    function buildGrid(){ return states.map(row=>row.map(s=>CONFIG.emojis[s]||CONFIG.emojis.absent).join('')).join('\n') }
+    function share(includeVerse){
+      const header=`FUN Bible Game — ${modeLabel(currentMode)}`;
+      const grid=buildGrid();
+      const link=location.href.split('#')[0];
+      const parts=[header,grid,link];
+      if(includeVerse){ parts.splice(1,0,`Verse: ${ref}`) }
+      const text=parts.join('\n');
+      if(navigator.share){ navigator.share({text}).catch(()=>copy(text)) } else copy(text)
+    }
+    function copy(text){
+      navigator.clipboard?.writeText(text)
+        .then(()=>statusMsg('Copied share text to clipboard.'))
+        .catch(()=>{
+          const ta=document.createElement('textarea'); ta.value=text;
+          document.body.appendChild(ta); ta.select();
+          try{document.execCommand('copy')}catch{}
+          ta.remove();
+          statusMsg('Copied share text to clipboard.');
+        });
+    }
+
+    function installNudgeSetup(){
+      const PREF='fbw-v1', KEY_SESS=PREF+'-sessions', KEY_NUDGED=PREF+'-nudged', KEY_DISMISSED=PREF+'-nudge-dismissed';
+      if(!sessionStorage.getItem(PREF+'-seen')){
+        sessionStorage.setItem(PREF+'-seen','1');
+        const s=parseInt(localStorage.getItem(KEY_SESS)||'0',10)+1;
+        localStorage.setItem(KEY_SESS,String(s));
+      }
+      let deferredPrompt=null;
+      let installed=window.matchMedia('(display-mode: standalone)').matches || (navigator.standalone===true);
+
+      window.addEventListener('beforeinstallprompt',e=>{
+        e.preventDefault(); deferredPrompt=e; maybeShow();
+      });
+      window.addEventListener('appinstalled',()=>{
+        installed=true; hideNudge(); localStorage.setItem(PREF+'-installed','1');
+      });
+
+      function isIosSafari(){
+        const ua=navigator.userAgent.toLowerCase();
+        const iOS=/iphone|ipad|ipod/.test(ua);
+        const safari=/safari/.test(ua) && !/crios|fxios|opios|edgios/.test(ua);
+        return iOS && safari;
+      }
+      function maybeShow(){
+        if(installed) return;
+        if(localStorage.getItem(KEY_NUDGED)==='1' || localStorage.getItem(KEY_DISMISSED)==='1') return;
+        const sessions=parseInt(localStorage.getItem(KEY_SESS)||'0',10);
+        if(sessions<2) return;
+        if(deferredPrompt || isIosSafari()) showNudge();
+      }
+      function showNudge(){
+        const el=$('#install-nudge'); const text=$('#install-nudge-text');
+        const bInstall=$('#btn-install'); const bIOS=$('#btn-ios');
+        if(!el) return;
+        if(deferredPrompt){
+          if(bInstall) bInstall.style.display='';
+          if(bIOS) bIOS.style.display='none';
+          if(text) text.textContent='Install Fun Bible Game for quick daily play?';
+        } else {
+          if(bInstall) bInstall.style.display='none';
+          if(bIOS) bIOS.style.display='';
+          if(text) text.textContent='Add Fun Bible Game to your Home Screen for quick access.';
+        }
+        el.classList.add('show');
+        localStorage.setItem(KEY_NUDGED,'1');
+      }
+      function hideNudge(){ const el=$('#install-nudge'); if(el) el.classList.remove('show') }
+
+      const closeBtn = $('#btn-close-nudge');
+      if(closeBtn) closeBtn.addEventListener('click',()=>{
+        localStorage.setItem(KEY_DISMISSED,'1'); hideNudge();
+      });
+
+      const installBtn = $('#btn-install');
+      if(installBtn) installBtn.addEventListener('click',async()=>{
+        if(!deferredPrompt) return;
+        deferredPrompt.prompt();
+        try{ await deferredPrompt.userChoice }catch{} finally{ deferredPrompt=null; hideNudge(); }
+      });
+
+      const iosBtn = $('#btn-ios');
+      if(iosBtn) iosBtn.addEventListener('click',()=>{
+        alert('On iPhone/iPad: Tap the Share icon, then “Add to Home Screen”.');
+        hideNudge();
+      });
+
+      window.addEventListener('load', maybeShow);
+      setTimeout(maybeShow, 2500);
+    }
+
+    function syncSoundIcon(){
+      const btn = document.getElementById('toggle-sound');
+      if (!btn) return;
+      const use = btn.querySelector('use');
+      if (!use) return;
+      const mutedNow = btn.getAttribute('aria-pressed') === 'true'; // true means muted
+      const target = mutedNow ? '#ic-volume-off' : '#ic-volume-on';
+      use.setAttribute('href', target);
+      try { use.setAttribute('xlink:href', target); } catch {}
+    }
+
+  })();
+  </script>
+
+  <!-- SVG SPRITE (define once, safe & inert) -->
+  <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display:none" aria-hidden="true">
+    <!-- Palette -->
+    <symbol id="ic-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3a9 9 0 1 0 0 18h2.2a2.8 2.8 0 0 0 2.8-2.8c0-1.3-.9-2.4-2.1-2.7l-1.2-.3a2 2 0 0 1-1.5-1.9V12a2 2 0 0 1 2-2h.8A4.8 4.8 0 0 0 12 3z"/>
+      <circle cx="7.5" cy="10" r="1.1"/><circle cx="9.5" cy="6.8" r="1.1"/>
+      <circle cx="12.7" cy="6" r="1.1"/><circle cx="16" cy="7.5" r="1.1"/>
+    </symbol>
+    <!-- Volume on -->
+    <symbol id="ic-volume-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 6.5 8H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.5L11 19a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/>
+      <path d="M15 9a4 4 0 0 1 0 6"/><path d="M17.5 7a7 7 0 0 1 0 10"/>
+    </symbol>
+    <!-- Volume off -->
+    <symbol id="ic-volume-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 5 6.5 8H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.5L11 19a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/>
+      <path d="M16 10l4 4M20 10l-4 4"/>
+    </symbol>
+    <!-- Calendar -->
+    <symbol id="ic-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="17" rx="2" ry="2"/>
+      <path d="M16 2v4M8 2v4M3 10h18"/>
+      <rect x="7" y="13" width="4" height="4" rx="1" ry="1"/>
+    </symbol>
+    <!-- Gift -->
+    <symbol id="ic-gift" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/>
+      <path d="M2 8h20v4H2z"/><path d="M12 21V8"/>
+      <path d="M12 8c-1.7 0-5-.6-5-2.5S9 3 10.5 4.6c.7.7 1 2.4 1.5 3.4zM12 8c1.7 0 5-.6 5-2.5S15 3 13.5 4.6c-.7.7-1 2.4-1.5 3.4z"/>
+    </symbol>
+    <!-- Star -->
+    <symbol id="ic-star" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.7 6.2 20.4l1.1-6.5L2.6 9.3l6.5-.9L12 2.5z"/>
+    </symbol>
+  </svg>
+</body>
+</html>
